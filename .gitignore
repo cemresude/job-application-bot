@@ -1,0 +1,24 @@
+# Kimlik ve kişisel bilgiler
+.env
+config.local.yaml
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.venv/
+venv/
+
+# Tarayıcı profilleri — oturum çerezleri + giriş bilgileri içerir, ASLA push etme
+.browser-profiles/
+
+# Çalışma çıktıları
+logs/applications.json
+logs/*.log
+cv/*.pdf
+cv/*.docx
+screenshots/*.png
+
+# macOS
+.DS_Store

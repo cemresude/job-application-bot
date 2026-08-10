@@ -1,0 +1,146 @@
+# Örnek değerler. Kendi bilgilerini BU dosyaya değil, config.local.yaml'a yaz —
+# o dosya .gitignore'dadır ve buradaki alanların üzerine biner.
+personal:
+  name: "Ad Soyad"
+  email: "ornek@eposta.com"
+  phone: "+90 5XX XXX XX XX"
+  location: "Ankara, Türkiye"
+  linkedin_url: "linkedin.com/in/kullanici-adi"
+
+cv:
+  turkish: "cv/cv_tr.pdf"
+  english: "cv/cv_en.pdf"
+
+platforms:
+  linkedin:
+    enabled: true
+    max_per_run: 25
+    language: "english"   # cv dili
+  kariyer:
+    enabled: true
+    max_per_run: 25
+    language: "turkish"
+  indeed:
+    enabled: true
+    max_per_run: 20
+    language: "english"
+  glassdoor:
+    enabled: true
+    max_per_run: 15
+    language: "english"
+
+search:
+  # ÖNCELİK: Türkçe kelimeler önce taranır (Kariyer.net TR sitesi olduğu için
+  # çok daha isabetli/hızlı sonuç verir). İngilizce kelimeler sonra gelir —
+  # onlar da LinkedIn/Indeed/Glassdoor için değerli.
+  keywords:
+    # --- Türkçe (ÖNCE — özellikle Kariyer.net) ---
+    - "Yazılım Mühendisi"           # Software Engineer
+    - "Yazılım Geliştirici"         # Software Developer
+    - "Yapay Zeka Mühendisi"        # AI Engineer
+    - "Makine Öğrenmesi Mühendisi"  # Machine Learning Engineer
+    - "Derin Öğrenme Mühendisi"     # Deep Learning Engineer
+    - "Veri Bilimci"                # Data Scientist
+    - "Veri Mühendisi"              # Data Engineer
+    - "Bilgisayarlı Görü Mühendisi" # Computer Vision Engineer
+    - "Görüntü İşleme Mühendisi"    # Image Processing / CV
+    - "Doğal Dil İşleme Mühendisi"  # NLP Engineer
+    - "Python Geliştirici"          # Python Developer
+    - "Araştırma Mühendisi"         # Research Engineer
+    # --- İngilizce (SONRA — özellikle LinkedIn / Indeed / Glassdoor) ---
+    - "Machine Learning Engineer"
+    - "AI Engineer"
+    - "Data Scientist"
+    - "Python Developer"
+    - "Software Engineer"
+    - "Backend Developer"
+    - "Computer Vision Engineer"
+    - "NLP Engineer"
+    - "Deep Learning Engineer"
+    - "Research Engineer"
+
+  locations:
+    - "Ankara"
+    - "İstanbul"
+    - "Remote"
+    - "Uzaktan"
+
+  exclude_keywords:
+    - "10+ yıl"
+    - "10+ years experience"
+    - "Senior Lead"
+    - "VP of"
+    - "Director of"
+    - "C-Level"
+    - "Chief"
+
+skill_matching:
+  min_score: 0.10
+  skills:
+    - python
+    - "c++"
+    - sql
+    - javascript
+    - tensorflow
+    - pytorch
+    - "scikit-learn"
+    - "machine learning"
+    - "deep learning"
+    - "computer vision"
+    - nlp
+    - xai
+    - lidar
+    - docker
+    - "node.js"
+    - "react"
+    - "rest api"
+    - pandas
+    - numpy
+    - "data science"
+    - "data analysis"
+    - git
+    - lstm
+    - transformer
+    - "neural network"
+
+# LinkedIn Easy Apply formlarında sık sorulan sorulara varsayılan yanıtlar
+form_answers:
+  years_of_experience:
+    python: "3"
+    "machine learning": "2"
+    "deep learning": "2"
+    "data science": "2"
+    "computer vision": "2"
+    "c++": "2"
+    sql: "2"
+    javascript: "1"
+    docker: "1"
+    "node.js": "1"
+    default: "1"
+  work_authorization: "Yes"         # Çalışma izni var mı?
+  visa_sponsorship: "No"            # Vize sponsorluğu gerekiyor mu?
+  willing_to_relocate: "Yes"        # Taşınmaya hazır mısın?
+  salary_expectation: "90000"       # TL (net/brüt belirtilmezse)
+  salary_expectation_usd: "1800"    # USD isteyen alanlar için karşılığı
+  earliest_start_date: "Immediately"
+  graduation_year: "2026"
+  gpa: ""                           # config.local.yaml'da doldur
+  education_level: "Bachelor's"     # veya "Bachelor"
+
+  # Adres bilgileri (Indeed vb. adres/maaş isteyen formlar için)
+  # Gerçek adresini config.local.yaml'a yaz — burası örnek/boş kalır.
+  address: ""
+  street_address: ""
+  city: ""
+  district: ""
+  postal_code: ""
+  country: "Türkiye"
+
+browser:
+  headless: false
+  slow_mo: 30
+
+rate_limiting:
+  min_delay: 2.0
+  max_delay: 5.0
+  between_platforms: 15

@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3 -m py_compile src/platforms/kariyer.py)",
+      "WebFetch(domain:www.kariyer.net)",
+      "WebSearch"
+    ]
+  }
+}
