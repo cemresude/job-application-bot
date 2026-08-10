@@ -53,7 +53,8 @@ PLATFORM_MAP = {
 }
 
 
-def build_platforms(config: Config, app_logger: AppLogger, matcher: JobMatcher, selected: list):
+def build_platforms(config: Config, app_logger: AppLogger, matcher: JobMatcher, selected: list,
+                    dry_run: bool = False):
     # Giriş artık MANUEL yapılıyor (oturum tarayıcı profilinde saklanır), bu
     # yüzden .env'de e-posta/şifre olması ZORUNLU değildir. Sadece platformun
     # açık olup olmadığına bakılır.
@@ -70,13 +71,14 @@ def build_platforms(config: Config, app_logger: AppLogger, matcher: JobMatcher, 
         if not enabled_map[name]:
             logger.info(f"[{name}] devre dışı, atlanıyor.")
             continue
-        platforms.append(cls(config, app_logger, matcher))
+        platforms.append(cls(config, app_logger, matcher, dry_run=dry_run))
     return platforms
 
 
 def main():
     parser = argparse.ArgumentParser(description="Otomatik iş başvuru botu")
-    parser.add_argument("--dry-run", action="store_true", help="Başvuru yapma, sadece listele")
+    parser.add_argument("--dry-run", action="store_true",
+                        help="Başvuru yapmadan ilanları tara ve eşleşenleri listele")
     parser.add_argument("--platform", nargs="+", choices=list(PLATFORM_MAP.keys()), help="Belirli platformlar")
     parser.add_argument("--stats", action="store_true", help="Başvuru istatistiklerini göster ve çık")
     parser.add_argument("--verbose", "-v", action="store_true", help="Ayrıntılı DEBUG loglarını konsolda göster")
@@ -92,8 +94,8 @@ def main():
         border_style="cyan",
     ))
 
-    app_logger = AppLogger()
-    matcher = JobMatcher(config.skills, config.exclude_keywords)
+    app_logger = AppLogger(dry_run=args.dry_run)
+    matcher = JobMatcher(config.skills, config.exclude_keywords, config.full_match_skills)
 
     if args.stats:
         app_logger.print_summary()
@@ -102,9 +104,12 @@ def main():
         return
 
     if args.dry_run:
-        console.print("[yellow]DRY-RUN modu: başvuru yapılmayacak.[/yellow]")
+        console.print(
+            "[yellow]DRY-RUN modu:[/yellow] ilanlar taranacak, uygun olanlar listelenecek — "
+            "[bold]başvuru yapılmayacak[/bold] ve başvuru geçmişi değişmeyecek."
+        )
 
-    platforms = build_platforms(config, app_logger, matcher, args.platform)
+    platforms = build_platforms(config, app_logger, matcher, args.platform, args.dry_run)
 
     if not platforms:
         console.print("[red]Aktif platform bulunamadı. .env ve config.yaml dosyalarını kontrol et.[/red]")
@@ -118,17 +123,16 @@ def main():
     for i, platform in enumerate(platforms):
         console.rule(f"[bold]{platform.name}[/bold]")
 
-        if args.dry_run:
-            console.print(f"[dim][{platform.name}] dry-run: gerçek çalıştırma için --dry-run bayrağını kaldır.[/dim]")
-            continue
-
         try:
             applied = platform.run()
             total_applied += applied
-            console.print(f"[green]✓ {platform.name}: {applied} başvuru[/green]")
+            if args.dry_run:
+                console.print(f"[cyan]○ {platform.name}: {applied} uygun ilan[/cyan]")
+            else:
+                console.print(f"[green]✓ {platform.name}: {applied} başvuru[/green]")
         except Exception as exc:
             console.print(f"[red]✗ {platform.name}: {exc}[/red]")
-            logger.exception(exc)
+            logger.exception(f"[{platform.name}] çalışma hatası")
 
         if i < len(platforms) - 1:
             wait = config.between_platforms
@@ -136,6 +140,15 @@ def main():
             time.sleep(wait)
 
     console.rule()
+
+    if args.dry_run:
+        console.print(
+            f"\n[bold cyan]DRY-RUN: {total_applied} uygun ilan bulundu, başvuru yapılmadı.[/bold cyan]\n"
+        )
+        app_logger.print_matches()
+        console.print("\n[dim]Gerçekten başvurmak için --dry-run bayrağını kaldır.[/dim]")
+        return
+
     console.print(f"\n[bold green]Toplam {total_applied} pozisyona başvuru yapıldı.[/bold green]\n")
     app_logger.print_summary()
     stats = app_logger.stats()

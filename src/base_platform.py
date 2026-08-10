@@ -9,7 +9,7 @@ from rich.console import Console
 
 from src import browser as br
 from src.app_logger import AppLogger
-from src.config import Config
+from src.config import Config, PlatformConfig
 from src.matcher import JobMatcher
 
 console = Console()
@@ -19,12 +19,20 @@ class BasePlatform(ABC):
     name: str = "base"
     HOME_URL: str = ""
     LOGIN_URL: str = ""  # boşsa HOME_URL kullanılır
+    CONFIG_KEY: str = ""  # config.yaml -> platforms.<CONFIG_KEY>
 
-    def __init__(self, config: Config, app_logger: AppLogger, matcher: JobMatcher):
+    def __init__(self, config: Config, app_logger: AppLogger, matcher: JobMatcher,
+                 dry_run: bool = False):
         self.config = config
         self.app_logger = app_logger
         self.matcher = matcher
+        self.dry_run = dry_run
         self._pw = None
+
+    @property
+    def settings(self) -> PlatformConfig:
+        """Bu platformun config.yaml ayarları (enabled / max_per_run / language)."""
+        return getattr(self.config, self.CONFIG_KEY)
 
     # ------------------------------------------------------------------ #
     # Alt sınıflar implement eder
@@ -251,12 +259,195 @@ class BasePlatform(ABC):
             return ""
 
     def default_cover_letter(self) -> str:
+        """Platformun CV diline göre ön yazı (LinkedIn/Indeed → EN, Kariyer.net → TR)."""
+        if self.settings.language == "english":
+            return (
+                f"Hi,\n\nI am {self.config.name}, a Software Engineering student with "
+                "experience in Python, Machine Learning, Deep Learning, and Computer Vision. "
+                "I believe my background aligns well with this role and I am eager to "
+                "contribute.\n\nBest regards,\n" + self.config.name
+            )
         return (
             f"Merhaba,\n\nBen {self.config.name}. Python, Makine Öğrenmesi, Derin Öğrenme ve "
             "Bilgisayarlı Görü alanlarında deneyimli bir Yazılım Mühendisliği öğrencisiyim. "
             "Bu pozisyonun profilime çok uygun olduğunu düşünüyor ve katkı sağlamak istiyorum.\n\n"
             "Saygılarımla,\n" + self.config.name
         )
+
+    # ------------------------------------------------------------------ #
+    # Dry-run
+    # ------------------------------------------------------------------ #
+
+    def note_dry_run(self, title: str, company: str, url: str) -> bool:
+        """
+        Dry-run modunda başvuru yapılacak ilanı kaydeder (diske yazılmaz).
+        Çağıran akış bunu 'eşleşme' olarak saysın diye her zaman True döner.
+        """
+        self.app_logger.record(
+            self.name, title, company or "", url, "dry_run", "dry-run: başvuru yapılmadı"
+        )
+        return True
+
+    # ------------------------------------------------------------------ #
+    # Genel form doldurma — Indeed ve Glassdoor bunu paylaşır
+    # (LinkedIn'in modal'ı kendi özel akışını kullanır)
+    # ------------------------------------------------------------------ #
+
+    def form_scopes(self, page: Page) -> list:
+        """Ana sayfa + varsa başvuru iframe'leri. Formlar sık sık iframe içinde açılır."""
+        scopes = [page]
+        try:
+            for frame in page.frames:
+                if frame != page.main_frame:
+                    scopes.append(frame)
+        except Exception:
+            pass
+        return scopes
+
+    def upload_cv(self, scope) -> bool:
+        """
+        CV'yi ilk uygun dosya alanına yükler.
+
+        Görünürlük KONTROL EDİLMEZ: yükleme inputları neredeyse her zaman
+        gizlidir (üstlerinde şık bir buton durur), dolayısıyla is_visible()
+        filtrelemek CV yüklemeyi tamamen engellerdi. İlk başarılı yüklemeden
+        sonra durulur — CV'yi ön yazı gibi başka bir dosya alanına da
+        yüklemek istemiyoruz.
+        """
+        cv_path = self.config.get_cv_path(self.settings.language)
+        if not cv_path:
+            return False
+        try:
+            inputs = scope.query_selector_all("input[type='file']")
+        except Exception:
+            return False
+
+        for inp in inputs:
+            try:
+                inp.set_input_files(cv_path)
+                scope.wait_for_timeout(1200)
+                logger.debug(f"[{self.name}] CV yüklendi.")
+                return True
+            except Exception:
+                pass
+        return False
+
+    def fill_scope_fields(self, scope):
+        """Bir scope (Page/Frame) içindeki görünür alanları config'e göre doldurur."""
+        try:
+            fields = scope.query_selector_all("input:visible, select:visible, textarea:visible")
+        except Exception:
+            return
+
+        for field in fields:
+            try:
+                tag = field.evaluate("el => el.tagName.toLowerCase()")
+                ftype = (field.get_attribute("type") or "").lower()
+                if ftype in ("hidden", "file", "submit", "button", "search", "reset"):
+                    continue
+
+                label = self.field_label(scope, field) or ""
+                val = self.value_for_field(label)
+
+                if tag == "select":
+                    self.select_option(field, val, label)
+                elif tag == "textarea":
+                    cur = field.evaluate("el => el.value") or ""
+                    if not cur.strip():
+                        field.fill(val or self.default_cover_letter())
+                elif ftype == "radio":
+                    self.answer_radio(field, label)
+                elif ftype == "checkbox":
+                    # Onay/izin kutuları (KVKK, şartlar) işaretlenir
+                    if any(k in self._norm(label) for k in
+                           ("kvkk", "onay", "kabul", "terms", "consent", "agree",
+                            "privacy", "gizlilik", "acknowledge")):
+                        if not field.is_checked():
+                            field.check()
+                else:  # text, tel, email, number, url...
+                    cur = field.evaluate("el => el.value") or ""
+                    if val and not cur.strip():
+                        field.fill(val)
+            except Exception:
+                pass
+
+    def select_option(self, field, val, label):
+        """Açılır menüde uygun seçeneği seçer."""
+        try:
+            options = field.query_selector_all("option")
+            texts = [(o.inner_text() or "").strip().lower() for o in options]
+        except Exception:
+            return
+
+        def pick(keywords) -> bool:
+            for kw in keywords:
+                for i, txt in enumerate(texts):
+                    if kw and kw in txt:
+                        try:
+                            field.select_option(index=i)
+                            return True
+                        except Exception:
+                            pass
+            return False
+
+        low = self._norm(label)
+        if val and pick([str(val).lower()]):
+            return
+        if any(k in low for k in ("education", "egitim", "ogrenim", "degree", "derece")):
+            pick(["lisans", "bachelor", "universite", "undergraduate"])
+            return
+        if any(k in low for k in ("authoriz", "izin", "work permit", "calisma")):
+            pick(["yes", "evet"])
+            return
+        if any(k in low for k in ("sponsor", "vize", "visa")):
+            pick(["no", "hayir"])
+            return
+        # Genel: ilk anlamlı (yer tutucu olmayan) seçenek
+        for i, txt in enumerate(texts):
+            if txt and "secin" not in self._norm(txt) and "select" not in txt:
+                try:
+                    field.select_option(index=i)
+                except Exception:
+                    pass
+                return
+
+    def answer_radio(self, field, label):
+        low = self._norm(label)
+        rval = (field.get_attribute("value") or "").lower()
+        answers = self.config.form_answers
+        if any(k in low for k in ("sponsor", "vize", "visa")):
+            if rval in (answers.get("visa_sponsorship", "No").lower(), "no", "hayır"):
+                field.check()
+            return
+        # Diğer evet/hayır sorularında olumlu yanıt
+        if rval in ("yes", "evet", "true", "1"):
+            field.check()
+
+    # Öncelik sırası önemli: önce gönderme, sonra ilerleme butonları.
+    SUBMIT_SELECTORS = [
+        "button:has-text('Submit')",
+        "button:has-text('Gönder')",
+        "button:has-text('Başvur')",
+        "button:has-text('Apply')",
+        "button:has-text('Continue')",
+        "button:has-text('Devam')",
+        "button:has-text('İleri')",
+        "button[type='submit']",
+    ]
+
+    def click_continue_or_submit(self, page: Page) -> bool:
+        """Formdaki bir sonraki adım/gönder butonuna basar (iframe'ler dahil)."""
+        for scope in self.form_scopes(page):
+            for sel in self.SUBMIT_SELECTORS:
+                try:
+                    btn = scope.query_selector(sel)
+                    if btn and btn.is_visible() and btn.is_enabled():
+                        btn.click()
+                        page.wait_for_timeout(2000)
+                        return True
+                except Exception:
+                    pass
+        return False
 
     # ------------------------------------------------------------------ #
     # Ana akış

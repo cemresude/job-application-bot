@@ -10,8 +10,17 @@ LOG_FILE = Path(__file__).parent.parent / "logs" / "applications.json"
 console = Console()
 
 
+ICONS = {
+    "applied": ("✓", "green"),
+    "dry_run": ("○", "cyan"),
+}
+
+
 class AppLogger:
-    def __init__(self):
+    def __init__(self, dry_run: bool = False):
+        # dry_run: kayıtlar bellekte tutulur ama diske YAZILMAZ — deneme
+        # taraması gerçek başvuru geçmişini kirletmemeli.
+        self.dry_run = dry_run
         LOG_FILE.parent.mkdir(exist_ok=True)
         self._data: list = self._load()
 
@@ -24,6 +33,8 @@ class AppLogger:
         return []
 
     def _save(self):
+        if self.dry_run:
+            return
         LOG_FILE.write_text(json.dumps(self._data, ensure_ascii=False, indent=2), encoding="utf-8")
 
     def already_applied(self, url: str) -> bool:
@@ -42,8 +53,7 @@ class AppLogger:
         self._data.append(entry)
         self._save()
 
-        icon = "✓" if status == "applied" else "✗"
-        color = "green" if status == "applied" else "yellow"
+        icon, color = ICONS.get(status, ("✗", "yellow"))
         console.print(f"  [{color}]{icon}[/{color}] {title} @ {company} [{status}]")
         if note:
             logger.debug(f"Not: {note}")
@@ -67,6 +77,26 @@ class AppLogger:
                 f"[{color}]{r['status']}[/{color}]",
                 r["date"][:10],
             )
+        console.print(table)
+
+    def matches(self) -> list:
+        """Dry-run taramasında eşleşen (başvurulabilir) ilanlar."""
+        return [r for r in self._data if r["status"] == "dry_run"]
+
+    def print_matches(self):
+        """Dry-run sonucunu link'leriyle birlikte tablo olarak basar."""
+        rows = self.matches()
+        if not rows:
+            console.print("[yellow]Eşleşen ilan bulunamadı.[/yellow]")
+            return
+        table = Table(title="Eşleşen İlanlar — başvuru YAPILMADI", show_header=True)
+        table.add_column("Platform")
+        table.add_column("Pozisyon")
+        table.add_column("Şirket")
+        table.add_column("Link", overflow="fold")
+
+        for r in rows:
+            table.add_row(r["platform"], r["title"][:45], r["company"][:28], r["url"])
         console.print(table)
 
     def stats(self) -> dict:

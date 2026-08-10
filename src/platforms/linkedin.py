@@ -11,6 +11,7 @@ from src.base_platform import BasePlatform
 
 class LinkedInPlatform(BasePlatform):
     name = "LinkedIn"
+    CONFIG_KEY = "linkedin"
     BASE = "https://www.linkedin.com"
     HOME_URL = "https://www.linkedin.com/feed/"
     LOGIN_URL = "https://www.linkedin.com/login"
@@ -53,7 +54,7 @@ class LinkedInPlatform(BasePlatform):
 
     def search_and_apply(self, page: Page) -> int:
         total = 0
-        platform_max = self.config.linkedin.max_per_run
+        platform_max = self.settings.max_per_run
         keywords = self.config.keywords
         self._seen_jobs: set = set()  # run boyunca aynı ilanı tekrar işleme
 
@@ -192,6 +193,9 @@ class LinkedInPlatform(BasePlatform):
         if not apply_btn:
             self.app_logger.record("LinkedIn", title, company or "", job_url, "skipped", "Easy Apply yok")
             return False
+
+        if self.dry_run:
+            return self.note_dry_run(title, company, job_url)
 
         apply_btn.click()
         page.wait_for_timeout(2000)
@@ -363,7 +367,7 @@ class LinkedInPlatform(BasePlatform):
         Amaç: HER ZORUNLU alanı yanıtlayıp 'İleri/Gönder' butonunu aktifleştirmek.
         (Yanıtsız bir dropdown/radio, butonu pasif bırakıp başvuruyu kilitliyordu.)
         """
-        self._upload_cv_if_needed(page)
+        self.upload_cv(page)
         scope = "div[role='dialog'] "
 
         # 1) Metin/sayı/tel/e-posta girişleri
@@ -387,7 +391,7 @@ class LinkedInPlatform(BasePlatform):
                 cur = ta.evaluate("el => el.value") or ""
                 if not cur.strip():
                     val = self.value_for_field(self._get_field_label(page, ta))
-                    ta.fill(val or self._default_cover_letter())
+                    ta.fill(val or self.default_cover_letter())
             except Exception:
                 pass
 
@@ -530,21 +534,6 @@ class LinkedInPlatform(BasePlatform):
         except Exception:
             return False
 
-    def _upload_cv_if_needed(self, page: Page):
-        cv_path = self.config.get_cv_path(self.config.linkedin.language)
-        if not cv_path:
-            return
-        upload_inputs = page.query_selector_all("input[type='file']")
-        for inp in upload_inputs:
-            if inp.is_visible() or True:  # bazı upload inputları hidden olur
-                try:
-                    inp.set_input_files(cv_path)
-                    page.wait_for_timeout(1500)
-                    logger.debug("[LinkedIn] CV yüklendi.")
-                    break
-                except Exception:
-                    pass
-
     def _get_field_label(self, page: Page, field) -> str:
         try:
             field_id = field.get_attribute("id")
@@ -558,14 +547,6 @@ class LinkedInPlatform(BasePlatform):
             )
         except Exception:
             return ""
-
-    def _default_cover_letter(self) -> str:
-        return (
-            f"Hi,\n\nI am {self.config.name}, a Software Engineering student at Ankara University "
-            "with experience in Python, Machine Learning, Deep Learning, and Computer Vision. "
-            "I believe my background aligns well with this role and I am eager to contribute.\n\n"
-            "Best regards,\n" + self.config.name
-        )
 
     # ------------------------------------------------------------------ #
     # Yardımcılar

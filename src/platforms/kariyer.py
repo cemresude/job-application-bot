@@ -8,6 +8,7 @@ from src.base_platform import BasePlatform
 
 class KariyerPlatform(BasePlatform):
     name = "Kariyer.net"
+    CONFIG_KEY = "kariyer"
     BASE = "https://www.kariyer.net"
     HOME_URL = "https://www.kariyer.net"
     # Kariyer.net'te ayrı bir giriş SAYFASI yoktur; giriş ana sayfadaki
@@ -71,7 +72,7 @@ class KariyerPlatform(BasePlatform):
 
     def search_and_apply(self, page: Page) -> int:
         total = 0
-        max_per_run = self.config.kariyer.max_per_run
+        max_per_run = self.settings.max_per_run
         self._visited_urls: set = set()
 
         for keyword in self.config.keywords:
@@ -360,6 +361,9 @@ class KariyerPlatform(BasePlatform):
         if not apply_btn:
             self.app_logger.record(self.name, title, company, url, "skipped", "Başvur butonu yok")
             return False
+
+        if self.dry_run:
+            return self.note_dry_run(title, company, url)
 
         apply_btn.click()
         self.delay(1)

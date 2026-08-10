@@ -63,6 +63,7 @@ class Config:
     # Yetenek eşleştirme
     min_score: float
     skills: list
+    full_match_skills: int
 
     # Form yanıtları
     form_answers: dict
@@ -123,6 +124,7 @@ class Config:
             exclude_keywords=search.get("exclude_keywords", []),
             min_score=skill_cfg["min_score"],
             skills=skill_cfg["skills"],
+            full_match_skills=skill_cfg.get("full_match_skills", 5),
             form_answers=form,
             headless=browser["headless"],
             slow_mo=browser["slow_mo"],

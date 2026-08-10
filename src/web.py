@@ -57,6 +57,10 @@ def categorize(status: str, note: str) -> dict:
     if status == "applied":
         return {"category": "applied", "label": "Başvuruldu", "manual": False}
 
+    # Dry-run taraması: eşleşti ama bilinçli olarak başvurulmadı (MANUEL aday)
+    if status == "dry_run":
+        return {"category": "dry_run", "label": "Dry-run eşleşmesi", "manual": True}
+
     # Kolay başvuru yok — bot başvuramaz, ilan uygun olabilir (MANUEL aday)
     if "easy apply yok" in note_l or "indeed apply yok" in note_l or "harici" in note_l:
         return {"category": "no_easy_apply", "label": "Kolay başvuru yok", "manual": True}
@@ -72,7 +76,7 @@ def categorize(status: str, note: str) -> dict:
     return {"category": "other", "label": "Diğer / belirsiz", "manual": False}
 
 
-def clean_url(platform: str, url: str) -> str:
+def clean_url(url: str) -> str:
     """
     Tıklanabilir doğrudan ilan linki üretir.
 
@@ -118,7 +122,7 @@ def build_dataset() -> dict:
             "platform": chosen.get("platform", ""),
             "title": chosen.get("title", "") or "(başlıksız)",
             "company": chosen.get("company", "") or "—",
-            "url": clean_url(chosen.get("platform", ""), chosen.get("url", "")),
+            "url": clean_url(chosen.get("url", "")),
             "status": chosen.get("status", ""),
             "note": chosen.get("note", "") or cat["label"],
             "category": cat["category"],

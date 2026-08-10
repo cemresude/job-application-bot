@@ -75,7 +75,11 @@ search:
     - "Chief"
 
 skill_matching:
-  min_score: 0.10
+  # Skor = eşleşen yetenek sayısı / full_match_skills (1.0'da doyar).
+  # full_match_skills: 5 iken  0.2 → 1 yetenek · 0.6 → 3 yetenek · 1.0 → 5+ yetenek
+  # min_score: 0.60  →  bir ilanın işleme alınması için en az 3 yetenek eşleşmeli.
+  full_match_skills: 5
+  min_score: 0.60
   skills:
     - python
     - "c++"

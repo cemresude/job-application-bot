@@ -8,6 +8,7 @@ from src.base_platform import BasePlatform
 
 class IndeedPlatform(BasePlatform):
     name = "Indeed"
+    CONFIG_KEY = "indeed"
     BASE = "https://tr.indeed.com"
     HOME_URL = "https://tr.indeed.com"
     LOGIN_URL = "https://secure.indeed.com/account/login?hl=tr"
@@ -38,7 +39,7 @@ class IndeedPlatform(BasePlatform):
 
     def search_and_apply(self, page: Page) -> int:
         total = 0
-        max_per_run = self.config.indeed.max_per_run
+        max_per_run = self.settings.max_per_run
 
         for keyword in self.config.keywords:
             if total >= max_per_run:
@@ -158,6 +159,9 @@ class IndeedPlatform(BasePlatform):
             self.app_logger.record(self.name, title, company, url, "skipped", "Indeed Apply yok (harici)")
             return False
 
+        if self.dry_run:
+            return self.note_dry_run(title, company, url)
+
         apply_btn.click()
         self.delay(2)
 
@@ -173,11 +177,11 @@ class IndeedPlatform(BasePlatform):
 
             # Indeed Apply formu çoğunlukla bir iframe içinde açılır; hem ana
             # sayfayı hem de tüm frame'leri tarayarak alanları dolduruyoruz.
-            for scope in self._form_scopes(page):
-                self._upload_cv(scope)
-                self._fill_scope_fields(scope)
+            for scope in self.form_scopes(page):
+                self.upload_cv(scope)
+                self.fill_scope_fields(scope)
 
-            if self._click_continue_or_submit(page):
+            if self.click_continue_or_submit(page):
                 if any(kw in page.url for kw in ["confirmation", "thank", "success", "submitted", "post-apply"]):
                     logger.success("[Indeed] ✓ Başvuru gönderildi.")
                     return True
@@ -186,142 +190,6 @@ class IndeedPlatform(BasePlatform):
             # İlerlenemedi
             logger.warning("[Indeed] Form ilerleyemedi, atlanıyor.")
             return False
-        return False
-
-    def _form_scopes(self, page: Page) -> list:
-        """Ana sayfa + Indeed Apply iframe'lerini (varsa) döndürür."""
-        scopes = [page]
-        try:
-            for frame in page.frames:
-                if frame != page.main_frame:
-                    scopes.append(frame)
-        except Exception:
-            pass
-        return scopes
-
-    def _upload_cv(self, scope):
-        cv_path = self.config.get_cv_path(self.config.indeed.language)
-        if not cv_path:
-            return
-        try:
-            for inp in scope.query_selector_all("input[type='file']"):
-                try:
-                    inp.set_input_files(cv_path)
-                    scope.wait_for_timeout(1200)
-                except Exception:
-                    pass
-        except Exception:
-            pass
-
-    def _fill_scope_fields(self, scope):
-        """Bir scope (Page/Frame) içindeki görünür alanları config'e göre doldurur."""
-        try:
-            fields = scope.query_selector_all(
-                "input:visible, select:visible, textarea:visible"
-            )
-        except Exception:
-            return
-
-        for field in fields:
-            try:
-                tag = field.evaluate("el => el.tagName.toLowerCase()")
-                ftype = (field.get_attribute("type") or "").lower()
-                if ftype in ("hidden", "file", "submit", "button", "search", "reset"):
-                    continue
-
-                label = self.field_label(scope, field)
-                val = self.value_for_field(label)
-
-                if tag == "select":
-                    self._select_option(field, val, label)
-                elif tag == "textarea":
-                    cur = field.evaluate("el => el.value") or ""
-                    if not cur.strip():
-                        field.fill(val or self.default_cover_letter())
-                elif ftype == "radio":
-                    self._answer_radio(scope, field, label)
-                elif ftype == "checkbox":
-                    # Onay/izin kutuları (KVKK, şartlar) işaretlenir
-                    if any(k in label.lower() for k in ("kvkk", "onay", "kabul", "terms", "consent", "agree", "privacy", "gizlilik")):
-                        if not field.is_checked():
-                            field.check()
-                else:  # text, tel, email, number, url...
-                    cur = field.evaluate("el => el.value") or ""
-                    if val and not cur.strip():
-                        field.fill(val)
-            except Exception:
-                pass
-
-    def _select_option(self, field, val, label):
-        """Açılır menüde uygun seçeneği seçer."""
-        try:
-            options = field.query_selector_all("option")
-            texts = [(o.inner_text() or "").strip().lower() for o in options]
-        except Exception:
-            return
-
-        def pick(keywords) -> bool:
-            for kw in keywords:
-                for i, txt in enumerate(texts):
-                    if kw and kw in txt:
-                        try:
-                            field.select_option(index=i)
-                            return True
-                        except Exception:
-                            pass
-            return False
-
-        low = (label or "").lower()
-        if val and pick([str(val).lower()]):
-            return
-        if any(k in low for k in ("education", "eğitim", "öğrenim", "degree")):
-            pick(["lisans", "bachelor", "üniversite", "undergraduate"])
-            return
-        if any(k in low for k in ("authoriz", "izin", "work permit", "çalışma")):
-            pick(["yes", "evet"])
-            return
-        if any(k in low for k in ("sponsor", "vize", "visa")):
-            pick(["no", "hayır"])
-            return
-        # Genel Evet/Hayır → ilk anlamlı (boş olmayan) seçenek
-        for i, txt in enumerate(texts):
-            if txt and "seçin" not in txt and "select" not in txt:
-                try:
-                    field.select_option(index=i)
-                except Exception:
-                    pass
-                return
-
-    def _answer_radio(self, scope, field, label):
-        low = (label or "").lower()
-        rval = (field.get_attribute("value") or "").lower()
-        answers = self.config.form_answers
-        if any(k in low for k in ("sponsor", "vize", "visa")):
-            if rval in (answers.get("visa_sponsorship", "No").lower(), "no", "hayır"):
-                field.check()
-            return
-        # Diğer evet/hayır sorularında olumlu yanıt
-        if rval in ("yes", "evet", "true", "1"):
-            field.check()
-
-    def _click_continue_or_submit(self, page: Page) -> bool:
-        for scope in self._form_scopes(page):
-            for sel in [
-                "button:has-text('Submit')",
-                "button:has-text('Gönder')",
-                "button:has-text('Başvur')",
-                "button:has-text('Continue')",
-                "button:has-text('Devam')",
-                "button[type='submit']",
-            ]:
-                try:
-                    btn = scope.query_selector(sel)
-                    if btn and btn.is_visible() and btn.is_enabled():
-                        btn.click()
-                        page.wait_for_timeout(2000)
-                        return True
-                except Exception:
-                    pass
         return False
 
     def _get_text(self, page: Page, selectors: list) -> str:

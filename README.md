@@ -11,7 +11,15 @@ Başvurulan/atlanan ilanları, atlanma nedenleriyle birlikte bir web panelinde g
   saklanır; sonraki çalıştırmalarda giriş istenmez. Otomatik şifre girişi bilinçli
   olarak kullanılmaz (platformlar bunu bot davranışı sayıp doğrulamaya takıyor).
 - **Uyum skoru** — ilan başlığı ve açıklaması `config.yaml`'daki yetenek listesiyle
-  karşılaştırılır; `min_score` altındaki ilanlar atlanır.
+  karşılaştırılır. Skor, eşleşen yetenek **sayısının** `full_match_skills` hedefine
+  oranıdır (1.0'da doyar), toplam liste uzunluğuna bölünmez — böylece yetenek
+  eklemek eşiği kaydırmaz:
+
+  | Eşleşen yetenek | 1 | 2 | 3 | 4 | 5+ |
+  |---|---|---|---|---|---|
+  | Skor (`full_match_skills: 5`) | 0.2 | 0.4 | 0.6 | 0.8 | 1.0 |
+
+  Varsayılan `min_score: 0.60` → bir ilanın işleme alınması için en az 3 yetenek eşleşmeli.
 - **Form doldurma** — deneyim yılı, çalışma izni, maaş beklentisi gibi sık sorulan
   alanlar `form_answers` bölümünden yanıtlanır; CV otomatik yüklenir.
 - **Kayıt** — her işlem `logs/applications.json`'a yazılır, aynı ilana iki kez
@@ -48,10 +56,16 @@ Ardından:
 
 ```bash
 python main.py                            # tüm aktif platformlarda çalış
+python main.py --dry-run                  # tara + eşleşenleri listele, BAŞVURMA
 python main.py --platform linkedin        # sadece belirli platformlar
 python main.py --stats                    # geçmiş başvuru istatistikleri
 python main.py -v                         # ayrıntılı DEBUG logları
 ```
+
+`--dry-run` ilanları gerçekten tarar ve başvurulabilir olanları link'leriyle
+tablo hâlinde basar; başvuru butonuna basmaz ve `logs/applications.json`'a
+yazmaz — yani başvuru geçmişin bozulmaz. Tarama yapabilmek için yine de
+platforma giriş yapılması gerekir.
 
 ### Web paneli
 

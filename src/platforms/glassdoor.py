@@ -8,6 +8,7 @@ from src.base_platform import BasePlatform
 
 class GlassdoorPlatform(BasePlatform):
     name = "Glassdoor"
+    CONFIG_KEY = "glassdoor"
     BASE = "https://www.glassdoor.com"
     HOME_URL = "https://www.glassdoor.com"
     LOGIN_URL = "https://www.glassdoor.com/profile/login_input.htm"
@@ -38,7 +39,7 @@ class GlassdoorPlatform(BasePlatform):
 
     def search_and_apply(self, page: Page) -> int:
         total = 0
-        max_per_run = self.config.glassdoor.max_per_run
+        max_per_run = self.settings.max_per_run
 
         for keyword in self.config.keywords:
             if total >= max_per_run:
@@ -164,37 +165,41 @@ class GlassdoorPlatform(BasePlatform):
             self.app_logger.record(self.name, title, company, url, "skipped", "Easy Apply yok")
             return False
 
+        if self.dry_run:
+            return self.note_dry_run(title, company, url)
+
         apply_btn.click()
         self.delay(2)
 
-        # Basit form: birkaç İleri/Gönder adımı
-        for _step in range(6):
+        success = self._handle_apply_form(page)
+        if success:
+            self.app_logger.record(self.name, title, company, url, "applied")
+        else:
+            self.app_logger.record(self.name, title, company, url, "skipped", "form tamamlanamadı")
+        return success
+
+    def _handle_apply_form(self, page: Page) -> bool:
+        """
+        Glassdoor Easy Apply formu — çok adımlı.
+
+        Eskiden burada alanlar DOLDURULMADAN sadece Submit/Continue'ya basılıyordu;
+        zorunlu alanı olan her ilan (yani çoğu) sessizce takılıyordu. Artık her
+        adımda CV yüklenip alanlar config'e göre dolduruluyor.
+        """
+        for _step in range(8):
             self.delay(0.5)
-            found = False
-            for sel in [
-                "button:has-text('Submit')",
-                "button:has-text('Apply')",
-                "button:has-text('Continue')",
-                "button[type='submit']",
-            ]:
-                try:
-                    btn = page.query_selector(sel)
-                    if btn and btn.is_visible() and btn.is_enabled():
-                        btn.click()
-                        page.wait_for_timeout(1500)
-                        found = True
-                        break
-                except Exception:
-                    pass
 
-            if any(kw in page.url for kw in ["confirm", "success", "thank"]):
-                self.app_logger.record(self.name, title, company, url, "applied")
+            for scope in self.form_scopes(page):
+                self.upload_cv(scope)
+                self.fill_scope_fields(scope)
+
+            if not self.click_continue_or_submit(page):
+                logger.warning("[Glassdoor] Form ilerleyemedi, atlanıyor.")
+                return False
+
+            if any(kw in page.url for kw in ["confirm", "success", "thank", "applied"]):
+                logger.success("[Glassdoor] ✓ Başvuru gönderildi.")
                 return True
-
-            if not found:
-                break
-
-        self.app_logger.record(self.name, title, company, url, "skipped", "form tamamlanamadı")
         return False
 
     def _get_text(self, page: Page, selectors: list) -> str:
