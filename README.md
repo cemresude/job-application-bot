@@ -19,7 +19,16 @@ Başvurulan/atlanan ilanları, atlanma nedenleriyle birlikte bir web panelinde g
   |---|---|---|---|---|---|
   | Skor (`full_match_skills: 5`) | 0.2 | 0.4 | 0.6 | 0.8 | 1.0 |
 
-  Varsayılan `min_score: 0.60` → bir ilanın işleme alınması için en az 3 yetenek eşleşmeli.
+  Skorun yanında ikinci bir şart var: **`core_skills`'ten en az biri geçmeli.**
+  Python, Git, Docker, SQL gibi genel araçlar neredeyse her yazılım ilanında
+  geçtiği için tek başlarına `Java Developer` ya da `.NET Full-Stack` ilanlarını
+  da eşiğin üstüne taşıyorlardı — bir full-stack ilanı yalnızca HTML/CSS/JS/SQL/Git
+  ile 1.0 skor alabiliyor. Çekirdek yetenek şartı bunu keser; genel araçlar skora
+  katkı vermeye devam eder ama bir ilanı tek başlarına nitelendiremez.
+
+  Eşleşme **kelime sınırlarıyla** yapılır (`git` artık "digital" içinde, `c` de
+  "docker" içinde eşleşmez) ve her iki taraf Türkçe-güvenli ASCII'ye normalize
+  edilir — böylece `makine öğrenmesi` ilandaki `MAKİNE ÖĞRENMESİ` ile eşleşir.
 - **Form doldurma** — deneyim yılı, çalışma izni, maaş beklentisi gibi sık sorulan
   alanlar `form_answers` bölümünden yanıtlanır; CV otomatik yüklenir.
 - **Kayıt** — her işlem `logs/applications.json`'a yazılır, aynı ilana iki kez
@@ -41,10 +50,14 @@ Ardından:
      name: "Ad Soyad"
      email: "ornek@eposta.com"
      phone: "+90 5XX XXX XX XX"
+     linkedin_url: "linkedin.com/in/kullanici-adi"
    form_answers:
+     github_url: "github.com/kullanici-adi"
+     university: "..."
+     field_of_study: "..."
+     gpa: "..."
      address: "..."
      city: "..."
-     gpa: "..."
    ```
 
 2. **CV dosyaları** — `cv/cv_tr.pdf` ve `cv/cv_en.pdf`

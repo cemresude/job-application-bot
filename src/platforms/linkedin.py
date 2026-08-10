@@ -82,10 +82,7 @@ class LinkedInPlatform(BasePlatform):
         url = f"{self.BASE}/jobs/search/?{params}"
         logger.info(f"[LinkedIn] Aranıyor: {keyword!r} @ {self.SEARCH_LOCATION}")
 
-        try:
-            page.goto(url, wait_until="domcontentloaded", timeout=20_000)
-        except PWTimeout:
-            logger.warning("[LinkedIn] Sayfa yüklenemedi, geçiliyor.")
+        if not self.safe_goto(page, url):
             return 0
 
         self.delay()
@@ -109,6 +106,7 @@ class LinkedInPlatform(BasePlatform):
                     result = self._process_card(page, cards[card_idx])
                     if result:
                         applied += 1
+                        self.applied_count += 1
                 except Exception as exc:
                     logger.warning(f"[LinkedIn] Kart işlenirken hata: {exc}")
                     self._close_modal(page)

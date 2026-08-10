@@ -58,6 +58,10 @@ search:
     - "NLP Engineer"
     - "Deep Learning Engineer"
     - "Research Engineer"
+    # --- CV'deki LLM / ajan deneyimine göre eklendi ---
+    - "LLM Engineer"
+    - "AI Developer"
+    - "Yapay Zeka Geliştirici"
 
   locations:
     - "Ankara"
@@ -65,61 +69,184 @@ search:
     - "Remote"
     - "Uzaktan"
 
+  # Başlık + açıklamada aranır
   exclude_keywords:
     - "10+ yıl"
     - "10+ years experience"
-    - "Senior Lead"
     - "VP of"
     - "Director of"
     - "C-Level"
-    - "Chief"
+
+  # Yalnızca BAŞLIKTA aranır. Kıdem/rol seviyesi başlığın özelliğidir —
+  # bunları tüm metinde arasaydık, açıklamasında "kıdemli ekiple çalışacaksın"
+  # yazan uygun bir ilan da elenirdi. 2026 mezunu bir profil için üst seviye
+  # ve kurucu-ortak ilanlarına otomatik başvurmak anlamsız.
+  exclude_title_keywords:
+    - "senior"
+    - "sr."
+    - "kıdemli"
+    - "lead"
+    - "principal"
+    - "staff engineer"
+    - "manager"
+    - "müdür"
+    - "head of"
+    - "chief"
+    - "founder"
+    - "kurucu"
 
 skill_matching:
   # Skor = eşleşen yetenek sayısı / full_match_skills (1.0'da doyar).
   # full_match_skills: 5 iken  0.2 → 1 yetenek · 0.6 → 3 yetenek · 1.0 → 5+ yetenek
   # min_score: 0.60  →  bir ilanın işleme alınması için en az 3 yetenek eşleşmeli.
   full_match_skills: 5
-  min_score: 0.60
+  # 0.40 = en az 2 yetenek. Eşik core_skills kuralıyla birlikte çalışıyor:
+  # alan-özel bir yetenek zaten şart olduğu için toplam sayıyı yüksek tutmaya
+  # gerek yok — aksi halde "Computer Vision Engineer + Python" gibi kısa ama
+  # tam isabetli ilanlar eleniyordu.
+  min_score: 0.40
+
+  # ÇEKİRDEK YETENEKLER — bir ilanın kabul edilmesi için en az biri geçmeli.
+  # Python/Git/Docker/SQL gibi genel araçlar buraya girmez: neredeyse her
+  # yazılım ilanında geçtikleri için tek başlarına Java/.NET ilanlarını da
+  # eşiğin üstüne taşıyorlardı. Skora katkıları sürüyor, ama artık bir ilanı
+  # tek başlarına "uygun" yapamıyorlar.
+  core_skills:
+    - "machine learning"
+    - "deep learning"
+    - "computer vision"
+    - nlp
+    - "natural language processing"
+    - "neural network"
+    - tensorflow
+    - pytorch
+    - "scikit-learn"
+    - lstm
+    - transformer
+    - "graph attention"
+    - gat
+    - gru
+    - resnet
+    - gradcam
+    - xai
+    - "explainable ai"
+    - lidar
+    - llm
+    - llamaindex
+    - openai
+    - "hugging face"
+    - gemini
+    - "data science"
+    - "data analysis"
+    - knime
+    - pandas
+    - numpy
+    - "yapay zeka"
+    - "makine öğrenmesi"
+    - "derin öğrenme"
+    - "bilgisayarlı görü"
+    - "görüntü işleme"
+    - "doğal dil işleme"
+    - "veri bilimi"
+    - "veri analizi"
+    - "yapay sinir ağı"
+    - "nesne tanıma"
+  # CV'deki (cv/cv_en.pdf) yetenekler. Eşleşme kelime sınırlarıyla yapılır,
+  # yani 'c' → "docker" veya 'git' → "digital" içinde eşleşmez.
   skills:
+    # --- Programlama dilleri ---
     - python
     - "c++"
+    - c
     - sql
     - javascript
+    # --- Backend & web ---
+    - "node.js"
+    - "react"
+    - "rest api"
+    - "restful api"
+    - html
+    - css
+    # --- ML & derin öğrenme ---
     - tensorflow
     - pytorch
     - "scikit-learn"
     - "machine learning"
     - "deep learning"
-    - "computer vision"
-    - nlp
-    - xai
-    - lidar
-    - docker
-    - "node.js"
-    - "react"
-    - "rest api"
-    - pandas
-    - numpy
-    - "data science"
-    - "data analysis"
-    - git
+    - "neural network"
     - lstm
     - transformer
-    - "neural network"
+    - "graph attention"
+    - gat
+    - gru
+    - resnet
+    - gradcam
+    - xai
+    - "explainable ai"
+    - "computer vision"
+    - nlp
+    - "natural language processing"
+    - lidar
+    # --- LLM / ajan ekosistemi ---
+    - llm
+    - llamaindex
+    - openai
+    - "hugging face"
+    - gemini
+    # --- Veri bilimi ---
+    - pandas
+    - numpy
+    - matplotlib
+    - seaborn
+    - knime
+    - "data science"
+    - "data analysis"
+    # --- DevOps & araçlar ---
+    - docker
+    - git
+    - "ci/cd"
+    - jira
+    - selenium
+    # --- Türkçe karşılıklar (Kariyer.net ilanları Türkçe yazılır) ---
+    # Eşleşme öncesi her iki taraf da ASCII'ye normalize edilir, bu yüzden
+    # Türkçe karakterle yazmak güvenli: "MAKİNE ÖĞRENMESİ" de eşleşir.
+    - "yapay zeka"
+    - "makine öğrenmesi"
+    - "derin öğrenme"
+    - "bilgisayarlı görü"
+    - "görüntü işleme"
+    - "doğal dil işleme"
+    - "veri bilimi"
+    - "veri analizi"
+    - "yapay sinir ağı"
+    - "nesne tanıma"
 
 # LinkedIn Easy Apply formlarında sık sorulan sorulara varsayılan yanıtlar
 form_answers:
+  # CV'deki iş deneyimi tarihlerinden türetildi (MS Spektral 07/2024,
+  # Ankara Üni. araştırmacı 10/2024-06/2025, Lotus AI 07-08/2025,
+  # Linkas 08-09/2025). Staj/proje süreleri dahil, yuvarlanmış değerler —
+  # göndermeden önce gözden geçir.
   years_of_experience:
-    python: "3"
+    python: "2"
     "machine learning": "2"
     "deep learning": "2"
-    "data science": "2"
     "computer vision": "2"
-    "c++": "2"
-    sql: "2"
+    pytorch: "2"
+    git: "2"
+    "data science": "2"
+    "data analysis": "2"
+    tensorflow: "1"
+    "c++": "1"
+    c: "1"
+    sql: "1"
     javascript: "1"
-    docker: "1"
     "node.js": "1"
+    react: "1"
+    docker: "1"
+    nlp: "1"
+    llm: "1"
+    selenium: "1"
     default: "1"
   work_authorization: "Yes"         # Çalışma izni var mı?
   visa_sponsorship: "No"            # Vize sponsorluğu gerekiyor mu?
@@ -130,6 +257,9 @@ form_answers:
   graduation_year: "2026"
   gpa: ""                           # config.local.yaml'da doldur
   education_level: "Bachelor's"     # veya "Bachelor"
+  university: ""                    # config.local.yaml'da doldur
+  field_of_study: ""                # config.local.yaml'da doldur
+  github_url: ""                    # config.local.yaml'da doldur
 
   # Adres bilgileri (Indeed vb. adres/maaş isteyen formlar için)
   # Gerçek adresini config.local.yaml'a yaz — burası örnek/boş kalır.

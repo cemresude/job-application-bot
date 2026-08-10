@@ -95,7 +95,8 @@ def main():
     ))
 
     app_logger = AppLogger(dry_run=args.dry_run)
-    matcher = JobMatcher(config.skills, config.exclude_keywords, config.full_match_skills)
+    matcher = JobMatcher(config.skills, config.exclude_keywords, config.full_match_skills,
+                         config.core_skills, config.exclude_title_keywords)
 
     if args.stats:
         app_logger.print_summary()

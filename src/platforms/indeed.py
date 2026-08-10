@@ -1,7 +1,7 @@
 import urllib.parse
 
 from loguru import logger
-from playwright.sync_api import Page, TimeoutError as PWTimeout
+from playwright.sync_api import Page
 
 from src.base_platform import BasePlatform
 
@@ -61,9 +61,7 @@ class IndeedPlatform(BasePlatform):
         url = f"{self.BASE}/jobs?{params}"
         logger.info(f"[Indeed] Aranıyor: {keyword!r} @ {location}")
 
-        try:
-            page.goto(url, wait_until="domcontentloaded", timeout=20_000)
-        except PWTimeout:
+        if not self.safe_goto(page, url):
             return 0
 
         self.delay()
@@ -82,6 +80,7 @@ class IndeedPlatform(BasePlatform):
                 try:
                     if self._apply(page, link):
                         applied += 1
+                        self.applied_count += 1
                 except Exception as exc:
                     logger.warning(f"[Indeed] Hata: {exc}")
                 self.delay()
@@ -114,9 +113,7 @@ class IndeedPlatform(BasePlatform):
         if self.app_logger.already_applied(url):
             return False
 
-        try:
-            page.goto(url, wait_until="domcontentloaded", timeout=15_000)
-        except PWTimeout:
+        if not self.safe_goto(page, url, 15_000):
             return False
 
         self.delay()

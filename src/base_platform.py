@@ -1,6 +1,5 @@
 import random
 import time
-import unicodedata
 from abc import ABC, abstractmethod
 
 from loguru import logger
@@ -10,7 +9,7 @@ from rich.console import Console
 from src import browser as br
 from src.app_logger import AppLogger
 from src.config import Config, PlatformConfig
-from src.matcher import JobMatcher
+from src.matcher import JobMatcher, normalize
 
 console = Console()
 
@@ -28,6 +27,11 @@ class BasePlatform(ABC):
         self.matcher = matcher
         self.dry_run = dry_run
         self._pw = None
+        # Başvuru sayacı: alt sınıflar her başarılı başvuruda ANINDA artırır.
+        # Yerel bir değişkende toplanıp en sonda döndürülürse, tarama ortasında
+        # çıkan bir istisna (ör. net::ERR_CONNECTION_CLOSED) o ana kadarki tüm
+        # ilerlemeyi sayaçtan siliyordu — gerçekte başvurular gönderilmiş olsa bile.
+        self.applied_count = 0
 
     @property
     def settings(self) -> PlatformConfig:
@@ -118,6 +122,24 @@ class BasePlatform(ABC):
     # Ortak yardımcılar
     # ------------------------------------------------------------------ #
 
+    def safe_goto(self, page: Page, url: str, timeout: int = 20_000) -> bool:
+        """
+        Sayfaya gider; açılamazsa istisna fırlatmak yerine False döner.
+
+        Sadece PWTimeout yakalamak yetmiyordu: net::ERR_CONNECTION_CLOSED gibi
+        ağ hataları Playwright'ta ayrı bir Error sınıfı ve dışarı sızıp TÜM
+        taramayı iptal ediyordu — tek bir bağlantı hatası yüzünden kalan
+        anahtar kelimeler hiç çalışmıyordu.
+        """
+        try:
+            page.goto(url, wait_until="domcontentloaded", timeout=timeout)
+            return True
+        except Exception as exc:
+            logger.warning(
+                f"[{self.name}] Sayfa açılamadı ({type(exc).__name__}), geçiliyor: {url[:90]}"
+            )
+            return False
+
     def delay(self, extra: float = 0):
         time.sleep(random.uniform(self.config.min_delay, self.config.max_delay) + extra)
 
@@ -158,13 +180,10 @@ class BasePlatform(ABC):
     @staticmethod
     def _norm(s: str) -> str:
         """
-        Türkçe-güvenli normalize: İ/I/ı → i, aksanları kaldırır, küçük harfe çevirir.
-        Böylece 'İlçe', 'Şehir', 'Yıl' gibi etiketler ASCII anahtar kelimelerle eşleşir.
-        (Python'da 'İ'.lower() birleşik noktalı 'i̇' üretip eşleşmeyi bozuyordu.)
+        Türkçe-güvenli normalize (matcher.normalize ile aynı kural).
+        'İlçe', 'Şehir', 'Yıl' gibi etiketler ASCII anahtar kelimelerle eşleşsin diye.
         """
-        s = (s or "").replace("İ", "i").replace("I", "i").replace("ı", "i")
-        s = unicodedata.normalize("NFKD", s.lower())
-        return "".join(c for c in s if not unicodedata.combining(c))
+        return normalize(s)
 
     def value_for_field(self, label: str):
         """
@@ -194,9 +213,21 @@ class BasePlatform(ABC):
                 return a.get("salary_expectation_usd") or a.get("salary_expectation")
             return a.get("salary_expectation") or a.get("salary_expectation_usd")
 
+        # Profil bağlantıları (URL kontrolü 'name'den ÖNCE — "LinkedIn profile
+        # name" gibi etiketler yanlışlıkla ad-soyad olarak doldurulmasın)
+        if has("linkedin"):
+            return self.config.linkedin_url
+        if has("github", "portfolio", "portfoy", "personal website", "kisisel site"):
+            return a.get("github_url", "")
+
         # Mezuniyet (deneyim/yıl kontrolünden ÖNCE — "Graduation year" içinde 'year' geçer)
         if has("graduation", "mezuniyet"):
             return a.get("graduation_year", "")
+        # Okul / bölüm
+        if has("university", "school", "universite", "okul", "college"):
+            return a.get("university", "")
+        if has("field of study", "major", "bolum", "program"):
+            return a.get("field_of_study", "")
 
         # Adres bileşenleri (özelden genele sırayla)
         if has("postal", "zip", "posta kodu"):
@@ -219,6 +250,18 @@ class BasePlatform(ABC):
                 if tech != "default" and self._norm(tech) in t:
                     return str(years)
             return str(yoe.get("default", "1"))
+
+        # Çalışma izni / vize / taşınma. Bunlar genelde açılır menü ya da radio
+        # olur (o yollar select_option/answer_radio'da ele alınır), ama serbest
+        # metin olarak sorulduğunda da yanıtsız kalmamalı — boş bırakılan zorunlu
+        # alan "İleri" butonunu pasif bırakıp başvuruyu kilitliyor.
+        # 'relocat' kontrolü 'available'dan ÖNCE: "Are you available to relocate?"
+        if has("relocat", "tasin"):
+            return a.get("willing_to_relocate", "Yes")
+        if has("sponsor", "vize", "visa"):
+            return a.get("visa_sponsorship", "No")
+        if has("authoriz", "work permit", "calisma izni", "calismaya yetkili"):
+            return a.get("work_authorization", "Yes")
 
         # Başlangıç tarihi
         if has("start", "baslangic", "available", "musait", "notice"):
@@ -262,14 +305,18 @@ class BasePlatform(ABC):
         """Platformun CV diline göre ön yazı (LinkedIn/Indeed → EN, Kariyer.net → TR)."""
         if self.settings.language == "english":
             return (
-                f"Hi,\n\nI am {self.config.name}, a Software Engineering student with "
-                "experience in Python, Machine Learning, Deep Learning, and Computer Vision. "
-                "I believe my background aligns well with this role and I am eager to "
-                "contribute.\n\nBest regards,\n" + self.config.name
+                f"Hi,\n\nI am {self.config.name}, a Software Engineer working on Deep Learning "
+                "and Data Science solutions with Python, C++, PyTorch and TensorFlow. My "
+                "project experience spans LIDAR-based Computer Vision, Explainable AI (XAI) "
+                "and LLM integration, and I have co-authored research published at IEEE/IFIP "
+                "NOMS 2026. I believe my background aligns well with this role and I would be "
+                "glad to contribute.\n\nBest regards,\n" + self.config.name
             )
         return (
-            f"Merhaba,\n\nBen {self.config.name}. Python, Makine Öğrenmesi, Derin Öğrenme ve "
-            "Bilgisayarlı Görü alanlarında deneyimli bir Yazılım Mühendisliği öğrencisiyim. "
+            f"Merhaba,\n\nBen {self.config.name}. Python, C++, PyTorch ve TensorFlow ile derin "
+            "öğrenme ve veri bilimi çözümleri geliştiriyorum. LIDAR tabanlı bilgisayarlı görü, "
+            "açıklanabilir yapay zeka (XAI) ve LLM entegrasyonu alanlarında uçtan uca proje "
+            "deneyimim, IEEE/IFIP NOMS 2026'da yayımlanan bir araştırma makalem var. "
             "Bu pozisyonun profilime çok uygun olduğunu düşünüyor ve katkı sağlamak istiyorum.\n\n"
             "Saygılarımla,\n" + self.config.name
         )
@@ -460,11 +507,10 @@ class BasePlatform(ABC):
             slow_mo=self.config.slow_mo,
         )
         page = ctx.new_page()
-        applied = 0
         try:
             self.login(page)
             self.delay()
-            applied = self.search_and_apply(page)
+            self.search_and_apply(page)
         except TimeoutError as exc:
             logger.warning(str(exc))
         except Exception as exc:
@@ -479,4 +525,4 @@ class BasePlatform(ABC):
                 self._pw.stop()
             except Exception:
                 pass
-        return applied
+        return self.applied_count

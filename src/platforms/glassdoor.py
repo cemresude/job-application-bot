@@ -1,7 +1,7 @@
 import urllib.parse
 
 from loguru import logger
-from playwright.sync_api import Page, TimeoutError as PWTimeout
+from playwright.sync_api import Page
 
 from src.base_platform import BasePlatform
 
@@ -60,9 +60,7 @@ class GlassdoorPlatform(BasePlatform):
         url = f"{self.BASE}/Job/jobs.htm?{params}"
         logger.info(f"[Glassdoor] Aranıyor: {keyword!r} @ {location}")
 
-        try:
-            page.goto(url, wait_until="domcontentloaded", timeout=20_000)
-        except PWTimeout:
+        if not self.safe_goto(page, url):
             return 0
 
         self.delay()
@@ -81,6 +79,7 @@ class GlassdoorPlatform(BasePlatform):
                 try:
                     if self._apply(page, link):
                         applied += 1
+                        self.applied_count += 1
                 except Exception as exc:
                     logger.warning(f"[Glassdoor] Hata: {exc}")
                 self.delay()
@@ -113,9 +112,7 @@ class GlassdoorPlatform(BasePlatform):
         if self.app_logger.already_applied(url):
             return False
 
-        try:
-            page.goto(url, wait_until="domcontentloaded", timeout=15_000)
-        except PWTimeout:
+        if not self.safe_goto(page, url, 15_000):
             return False
 
         self.delay()

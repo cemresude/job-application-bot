@@ -127,9 +127,7 @@ class KariyerPlatform(BasePlatform):
         geriye sadece konumu bırakıyordu → "tüm Ankara ilanları" dönüyordu.
         Arama kutusu ise backend'de tam-metin araması yaptığı için doğru sonuç verir.
         """
-        try:
-            page.goto(f"{self.BASE}/is-ilanlari", wait_until="domcontentloaded", timeout=20_000)
-        except PWTimeout:
+        if not self.safe_goto(page, f"{self.BASE}/is-ilanlari"):
             return False
         page.wait_for_timeout(1500)  # arama formu render olsun
 
@@ -242,6 +240,7 @@ class KariyerPlatform(BasePlatform):
                 try:
                     if self._apply_to_job(page, link):
                         applied += 1
+                        self.applied_count += 1
                 except Exception as exc:
                     logger.warning(f"[Kariyer.net] Hata: {exc}")
                 self.delay()
@@ -303,9 +302,7 @@ class KariyerPlatform(BasePlatform):
         if self.app_logger.already_applied(url):
             return False
 
-        try:
-            page.goto(url, wait_until="domcontentloaded", timeout=15_000)
-        except PWTimeout:
+        if not self.safe_goto(page, url, 15_000):
             return False
 
         # Detay içeriği de JS ile geldiği için başlık DOM'a gelene kadar bekle

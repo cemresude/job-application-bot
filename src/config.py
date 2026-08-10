@@ -59,11 +59,13 @@ class Config:
     keywords: list
     locations: list
     exclude_keywords: list
+    exclude_title_keywords: list
 
     # Yetenek eşleştirme
     min_score: float
     skills: list
     full_match_skills: int
+    core_skills: list
 
     # Form yanıtları
     form_answers: dict
@@ -122,9 +124,11 @@ class Config:
             keywords=search["keywords"],
             locations=search["locations"],
             exclude_keywords=search.get("exclude_keywords", []),
+            exclude_title_keywords=search.get("exclude_title_keywords", []),
             min_score=skill_cfg["min_score"],
             skills=skill_cfg["skills"],
             full_match_skills=skill_cfg.get("full_match_skills", 5),
+            core_skills=skill_cfg.get("core_skills", []),
             form_answers=form,
             headless=browser["headless"],
             slow_mo=browser["slow_mo"],
