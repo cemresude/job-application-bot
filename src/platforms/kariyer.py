@@ -51,16 +51,38 @@ class KariyerPlatform(BasePlatform):
             except Exception:
                 pass
 
-        # "Giriş Yap" butonu hâlâ görünüyorsa giriş yapılmamış
+        # "Giriş Yap" butonu hâlâ görünüyorsa giriş yapılmamış.
+        # Seçicilerde zaten ':visible' var; ayrıca el.is_visible() ÇAĞIRMIYORUZ,
+        # çünkü o çağrının fırlattığı bir hata "girişli değil" sinyalini yutup
+        # aşağıdaki iyimser dala düşürüyordu.
+        cta_check_complete = True
         for sel in [
             "a[href*='giris-yap']:visible",
             "a[href*='login']:visible",
             "button:has-text('Giriş Yap'):visible",
+            "a:has-text('Üye Ol'):visible",
         ]:
             try:
-                el = page.query_selector(sel)
-                if el and el.is_visible():
+                if page.query_selector(sel):
                     return False
+            except Exception:
+                cta_check_complete = False
+
+        # Ne kullanıcı menüsü ne de "Giriş Yap" görünüyor.
+        #
+        # Eskiden burada doğrudan False dönülüyordu; yani yukarıdaki CSS
+        # sınıflarından hiçbiri tutmazsa (site arayüzünü değiştirdiyse)
+        # kullanıcı giriş yapmış olsa bile bot 7 dakika bekleyip platformu
+        # atlıyordu. Oturum tespitini kırılgan avatar sınıflarına bağlamak
+        # yerine daha sağlam sinyali kullanıyoruz: giriş çağrısı ORTADA YOKSA
+        # oturum açıktır. Yalnızca giriş çağrısı kontrolü HATASIZ tamamlandıysa
+        # bu sonuca varıyoruz; ayrıca boş/yüklenmemiş sayfada yanlış pozitif
+        # olmasın diye sayfanın gerçekten render olduğunu doğruluyoruz.
+        if cta_check_complete:
+            try:
+                if page.query_selector("header, nav, .header"):
+                    logger.debug("[Kariyer.net] Giriş çağrısı yok, oturum açık sayılıyor.")
+                    return True
             except Exception:
                 pass
 
