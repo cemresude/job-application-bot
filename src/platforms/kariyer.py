@@ -17,6 +17,16 @@ class KariyerPlatform(BasePlatform):
     # Manuel giriş ana sayfa üzerinden yapılır ve oturum profile kaydedilir.
     LOGIN_URL = ""
 
+    # İlan detay sayfasının başlık seçicileri. Düz "h1" BİLİNÇLİ OLARAK yok:
+    # detay sayfasının h1'i başlık ile şirket adını birleştiriyor, dahası SPA
+    # geçişi tamamlanmadan liste sayfasının h1'i okunabiliyor.
+    TITLE_SELECTORS = [
+        "[class*='job-title']",
+        "[data-test*='title']",
+        "h1.job-detail-position-title",
+        "h1.position-title",
+    ]
+
     # ------------------------------------------------------------------ #
     # Oturum kontrolü
     # ------------------------------------------------------------------ #
@@ -327,28 +337,33 @@ class KariyerPlatform(BasePlatform):
         if not self.safe_goto(page, url, 15_000):
             return False
 
-        # Detay içeriği de JS ile geldiği için başlık DOM'a gelene kadar bekle
+        # İlan detayı JS ile geldiği için başlık DOM'a gelene kadar bekle.
+        # Genel "h1" BEKLENMİYOR: liste sayfasının h1'i ("İş İlanı Arasından
+        # İşini Bul") daha SPA geçişi bitmeden hazır olduğu için bekleme anında
+        # dönüyor, ardından her ilan o genel başlıkla değerlendirilip eleniyordu.
         try:
-            page.wait_for_selector("h1", timeout=10_000)
+            page.wait_for_selector(self.TITLE_SELECTORS[0], timeout=15_000)
         except PWTimeout:
             pass
 
         self.delay()
 
-        title = self._get_text(page, [
-            "h1.job-detail-position-title",
-            "h1.position-title",
-            "h1",
-        ])
+        # Gerçekten ilan detayına geçebildik mi? Geçemediysek liste sayfasından
+        # rastgele bir kart başlığı okumak yerine ilanı atlıyoruz.
+        if "/is-ilani/" not in page.url:
+            logger.debug(f"[Kariyer.net] İlan detayına geçilemedi: {page.url[:80]}")
+            return False
+
+        title = self._get_text(page, self.TITLE_SELECTORS)
         company = self._get_text(page, [
-            ".employer-name",
             ".company-name",
-            "span.company",
+            "[class*='company']",
+            ".employer-name",
         ])
         description = self._get_text(page, [
+            "[class*='detail-content']",
+            "[class*='description']",
             ".job-detail-description",
-            ".detail-desc",
-            "#jobDescription",
         ])
 
         if not title:
@@ -362,12 +377,11 @@ class KariyerPlatform(BasePlatform):
 
         apply_btn = None
         for sel in [
-            "button.apply-btn",
-            "a.apply-btn",
+            "button.apply-button",          # sitenin güncel sınıfı ('apply-btn' değil)
+            "[data-test*='apply']",
+            "button[class*='apply']",
             "button:has-text('Başvur')",
             "a:has-text('Başvur')",
-            "#applyBtn",
-            ".btn-apply",
         ]:
             try:
                 btn = page.query_selector(sel)
