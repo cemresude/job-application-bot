@@ -32,6 +32,10 @@ class BasePlatform(ABC):
         # çıkan bir istisna (ör. net::ERR_CONNECTION_CLOSED) o ana kadarki tüm
         # ilerlemeyi sayaçtan siliyordu — gerçekte başvurular gönderilmiş olsa bile.
         self.applied_count = 0
+        # Bu çalıştırmada işlenmiş ilan adresleri. Aynı ilan birden çok arama
+        # sonucunda çıkıyor; already_applied() yalnızca GERÇEKTEN başvurulanları
+        # yakaladığı için dry-run'da aynı ilan tekrar tekrar raporlanıyordu.
+        self.seen_jobs: set = set()
 
     @property
     def settings(self) -> PlatformConfig:
@@ -324,6 +328,16 @@ class BasePlatform(ABC):
     # ------------------------------------------------------------------ #
     # Dry-run
     # ------------------------------------------------------------------ #
+
+    def already_seen(self, url: str) -> bool:
+        """
+        İlan bu çalıştırmada daha önce işlendiyse True döner; işlenmediyse
+        kaydedip False döner (yani çağıran devam edebilir).
+        """
+        if url in self.seen_jobs:
+            return True
+        self.seen_jobs.add(url)
+        return False
 
     def note_dry_run(self, title: str, company: str, url: str) -> bool:
         """

@@ -331,7 +331,7 @@ class KariyerPlatform(BasePlatform):
         return links
 
     def _apply_to_job(self, page: Page, url: str) -> bool:
-        if self.app_logger.already_applied(url):
+        if self.already_seen(url) or self.app_logger.already_applied(url):
             return False
 
         if not self.safe_goto(page, url, 15_000):
