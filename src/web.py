@@ -61,6 +61,11 @@ def categorize(status: str, note: str) -> dict:
     if status == "dry_run":
         return {"category": "dry_run", "label": "Dry-run eşleşmesi", "manual": True}
 
+    # Bot koruması (Kariyer.net PerimeterX) tıklamayı engelledi — ilan uygundu,
+    # başvuru elle yapılmalı.
+    if "captcha" in note_l or "bot koruması" in note_l:
+        return {"category": "captcha", "label": "CAPTCHA engeli", "manual": True}
+
     # Kolay başvuru yok — bot başvuramaz, ilan uygun olabilir (MANUEL aday)
     if "easy apply yok" in note_l or "indeed apply yok" in note_l or "harici" in note_l:
         return {"category": "no_easy_apply", "label": "Kolay başvuru yok", "manual": True}
