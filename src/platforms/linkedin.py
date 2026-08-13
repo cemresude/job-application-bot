@@ -166,8 +166,10 @@ class LinkedInPlatform(BasePlatform):
                 return False
             seen.add(seen_key)
 
-        # Daha önce başvurulmuş mu?
-        if self.app_logger.already_applied(job_url):
+        # Daha önce başvurulmuş mu? (kimlik üzerinden — URL arama kelimesine
+        # göre değiştiği için düz URL karşılaştırması yetmiyor)
+        job_id = m.group(1) if m else ""
+        if self.app_logger.already_applied(job_url) or self.app_logger.already_applied_id(job_id):
             logger.debug(f"[LinkedIn] Zaten başvurulmuş: {title}")
             return False
 

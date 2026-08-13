@@ -40,6 +40,20 @@ class AppLogger:
     def already_applied(self, url: str) -> bool:
         return any(r["url"] == url and r["status"] == "applied" for r in self._data)
 
+    def already_applied_id(self, job_id: str) -> bool:
+        """
+        URL'sinde verilen ilan kimliği geçen bir 'applied' kaydı var mı?
+
+        LinkedIn kayıtlarındaki URL arama sayfasının adresi ve İÇİNDE arama
+        kelimesi geçiyor; aynı ilan başka bir kelimeyle bulunduğunda URL
+        değişiyor. Düz URL karşılaştırması bu yüzden eski başvuruyu kaçırıp
+        aynı ilana ikinci kez başvurulmasına yol açıyordu.
+        """
+        if not job_id:
+            return False
+        return any(job_id in r.get("url", "") and r.get("status") == "applied"
+                   for r in self._data)
+
     def record(self, platform: str, title: str, company: str, url: str, status: str, note: str = ""):
         entry = {
             "platform": platform,
