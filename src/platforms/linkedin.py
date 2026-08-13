@@ -119,17 +119,54 @@ class LinkedInPlatform(BasePlatform):
 
         return applied
 
+    # Eski düzenin kart seçicileri. LinkedIn yeni arama sayfasında bunların
+    # hiçbiri tutmuyor; yine de önce deneniyor, çünkü hesabın hangi düzeni
+    # gördüğü değişebiliyor (kademeli dağıtım).
+    CARD_SELECTORS = [
+        ".jobs-search-results__list-item",
+        ".job-card-container",
+        "li.scaffold-layout__list-item",
+    ]
+
     def _get_job_cards(self, page: Page) -> list:
-        selectors = [
-            ".jobs-search-results__list-item",
-            ".job-card-container",
-            "li.scaffold-layout__list-item",
-        ]
-        for sel in selectors:
+        for sel in self.CARD_SELECTORS:
             cards = page.query_selector_all(sel)
             if cards:
                 return cards
-        return []
+        return self._find_cards_structurally(page)
+
+    def _find_cards_structurally(self, page: Page) -> list:
+        """
+        İlan kartlarını sayfa YAPISINDAN bulur.
+
+        LinkedIn yeni iş arama düzeninde sınıf adları karıştırılmış
+        ('c7f3f3a7', '_8707df48' gibi), yani sınıf tabanlı hiçbir seçici
+        kalıcı olarak çalışmıyor. Onun yerine listeyi kalıbından tanıyoruz:
+        aynı ebeveyn altında, her biri anlamlı metin içeren en kalabalık
+        <div> kardeş grubu. İlan açıklamasındaki madde listeleri <ul>/<li>
+        olduğu için bu kalıba takılmıyor.
+        """
+        try:
+            handle = page.evaluate_handle("""
+            () => {
+              let best = null;
+              for (const parent of document.querySelectorAll('div')) {
+                const kids = Array.from(parent.children).filter(k => k.tagName === 'DIV');
+                if (kids.length < 5) continue;
+                const rich = kids.filter(k => (k.innerText || '').trim().length > 25);
+                if (rich.length < 5) continue;
+                if (!best || rich.length > best.length) best = rich;
+              }
+              return best || [];
+            }
+            """)
+            cards = [h.as_element() for h in handle.get_properties().values() if h.as_element()]
+            if cards:
+                logger.debug(f"[LinkedIn] Kartlar yapısal olarak bulundu: {len(cards)}")
+            return cards
+        except Exception as exc:
+            logger.debug(f"[LinkedIn] Yapısal kart tespiti başarısız: {exc}")
+            return []
 
     def _process_card(self, page: Page, card) -> bool:
         """İlan kartını işler; başvuru yapıldıysa True döner."""
@@ -139,17 +176,7 @@ class LinkedInPlatform(BasePlatform):
         except Exception:
             return False
 
-        # Başlık ve şirket bilgisi
-        title = self._get_text(page, [
-            ".job-details-jobs-unified-top-card__job-title",
-            ".jobs-unified-top-card__job-title",
-            "h1.t-24",
-        ])
-        company = self._get_text(page, [
-            ".job-details-jobs-unified-top-card__company-name",
-            ".jobs-unified-top-card__company-name",
-            ".topcard__org-name-link",
-        ])
+        title, company = self._job_title_and_company(page)
         job_url = page.url
 
         if not title:
@@ -173,12 +200,7 @@ class LinkedInPlatform(BasePlatform):
             logger.debug(f"[LinkedIn] Zaten başvurulmuş: {title}")
             return False
 
-        # Yetenek eşleştirmesi
-        description = self._get_text(page, [
-            ".jobs-description__content",
-            "#job-details",
-            ".jobs-box__html-content",
-        ])
+        description = self._job_description(page)
         if not self.matcher.is_match(title, description, self.config.min_score):
             self.app_logger.record("LinkedIn", title, company or "", job_url, "skipped", "düşük uyum skoru")
             return False
@@ -207,11 +229,85 @@ class LinkedInPlatform(BasePlatform):
         self.app_logger.record("LinkedIn", title, company or "", job_url, status, note)
         return success
 
+    def _job_title_and_company(self, page: Page) -> tuple:
+        """
+        İlan başlığı ve şirketini döndürür.
+
+        Önce bilinen seçiciler denenir; yeni düzende hepsi ölü olduğu için
+        sekme başlığına düşülür — o hâlâ "Başlık | Şirket | LinkedIn" biçiminde
+        ve karıştırılmış sınıf adlarından bağımsız olduğu için çok daha sağlam.
+        """
+        title = self._get_text(page, [
+            ".job-details-jobs-unified-top-card__job-title",
+            ".jobs-unified-top-card__job-title",
+            "h1.t-24",
+        ])
+        company = self._get_text(page, [
+            ".job-details-jobs-unified-top-card__company-name",
+            ".jobs-unified-top-card__company-name",
+            ".topcard__org-name-link",
+        ])
+        if title and company:
+            return title, company
+
+        try:
+            parts = [p.strip() for p in (page.title() or "").split("|")]
+        except Exception:
+            parts = []
+        parts = [p for p in parts if p and p.lower() != "linkedin"]
+        if not title and parts:
+            title = parts[0]
+        if not company and len(parts) > 1:
+            company = parts[1]
+        return title, company
+
+    def _job_description(self, page: Page) -> str:
+        """
+        İlan açıklaması. Eski seçiciler yeni düzende tutmadığı için
+        "İş ilanı hakkında" / "About the job" başlığından yukarı çıkarak
+        yeterince uzun metin içeren kapsayıcıyı buluyoruz.
+        """
+        desc = self._get_text(page, [
+            ".jobs-description__content",
+            "#job-details",
+            ".jobs-box__html-content",
+        ])
+        if desc:
+            return desc
+        try:
+            return page.evaluate("""
+            () => {
+              // Kalıpta Türkçe büyük 'İ' KULLANILMIYOR: JS'te /i/ bayrağı
+              // 'İ' ile 'i'yi eşleştirmiyor, bu yüzden 'İş ilanı hakkında'
+              // başlığını 'iş...' kalıbıyla aramak sessizce boş dönüyordu.
+              const RE = /hakk[ıi]nda|about the job/i;
+              const heads = Array.from(document.querySelectorAll('h2, h3'));
+              const h = heads.find(e => RE.test(e.innerText || ''));
+              if (!h) return '';
+              // Başlıktan yukarı çıkarak açıklamayı içeren kapsayıcıyı bul.
+              // Üst sınır: sol listedeki diğer ilanları da kapsayacak kadar
+              // büyüyüp eşleştirmeyi kirletmesin.
+              let el = h.parentElement, best = '';
+              for (let i = 0; i < 5 && el; i++) {
+                const t = (el.innerText || '').trim();
+                if (t.length > 200 && t.length < 12000) best = t;
+                if (best && t.length >= 12000) break;
+                el = el.parentElement;
+              }
+              return best;
+            }
+            """) or ""
+        except Exception:
+            return ""
+
     def _find_apply_button(self, page: Page):
         selectors = [
-            # Sınıf tabanlı seçici dilden bağımsızdır — en güvenilir olan bu.
+            # Sınıf tabanlı seçici dilden bağımsızdır ama yeni düzende yok.
             "button.jobs-apply-button",
             "button[data-control-name='jobdetails_topcard_inapply']",
+            # aria-label: yeni düzende çalışan en sağlam tutamak
+            "button[aria-label*='kolay başvuru' i]",
+            "button[aria-label*='easy apply' i]",
             # Metin tabanlı (İngilizce + Türkçe arayüz)
             "button:has-text('Easy Apply')",
             "button:has-text('Kolay Başvuru')",
