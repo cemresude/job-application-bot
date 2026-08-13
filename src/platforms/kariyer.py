@@ -398,13 +398,76 @@ class KariyerPlatform(BasePlatform):
         if self.dry_run:
             return self.note_dry_run(title, company, url)
 
-        apply_btn.click()
+        # Başvuru butonu bazı ilanlarda şirketin kendi sitesini YENİ SEKMEDE
+        # açıyor (butondaki 'open_in_new' ikonu bunun işareti). O durumda bot
+        # başvuru yapamaz; sekmeyi kapatıp manuel aday olarak kaydediyoruz.
+        pages_before = len(page.context.pages)
+        try:
+            # Kısa timeout: CAPTCHA katmanı tıklamayı engellediğinde Playwright
+            # varsayılan 30 sn boyunca yeniden deniyor ve her ilanda yarım dakika
+            # boşa gidiyordu.
+            apply_btn.click(timeout=8_000)
+        except Exception:
+            if self._captcha_present(page):
+                note = "CAPTCHA çıktı (Kariyer.net bot koruması) — elle başvurulmalı"
+            else:
+                note = "başvuru butonuna tıklanamadı"
+            self.app_logger.record(self.name, title, company, url, "skipped", note)
+            return False
+
         self.delay(1)
-        self._handle_apply_modal(page)
+
+        if self._captcha_present(page):
+            self.app_logger.record(self.name, title, company, url, "skipped",
+                                   "CAPTCHA çıktı (Kariyer.net bot koruması) — elle başvurulmalı")
+            return False
+
+        if len(page.context.pages) > pages_before:
+            for extra in page.context.pages[pages_before:]:
+                try:
+                    extra.close()
+                except Exception:
+                    pass
+            self.app_logger.record(self.name, title, company, url, "skipped",
+                                   "harici başvuru (şirket sitesine yönlendiriyor)")
+            return False
+
+        if not self._handle_apply_modal(page):
+            self.app_logger.record(self.name, title, company, url, "skipped",
+                                   "başvuru formu tamamlanamadı")
+            return False
+
         self.app_logger.record(self.name, title, company, url, "applied")
         return True
 
-    def _handle_apply_modal(self, page: Page):
+    def _captcha_present(self, page: Page) -> bool:
+        """
+        Kariyer.net PerimeterX bot koruması kullanıyor; tetiklendiğinde sayfanın
+        üstüne bir CAPTCHA iframe'i biniyor ve altındaki butonlara yapılan
+        tıklamaları yutuyor. Bunu ayırt etmek gerekiyor, yoksa engellenen her
+        başvuru "form doldurulamadı" gibi yanlış bir nedenle kaydediliyor.
+        """
+        for sel in ["iframe[id*='px-captcha']", "#px-captcha", "[class*='px-captcha']",
+                    "iframe[src*='captcha']"]:
+            try:
+                el = page.query_selector(sel)
+                if el and el.is_visible():
+                    return True
+            except Exception:
+                pass
+        return False
+
+    def _handle_apply_modal(self, page: Page) -> bool:
+        """
+        Başvuru modalındaki CV'yi seçip onay butonuna basar.
+
+        Döner: onay butonuna gerçekten basılabildiyse True.
+
+        Eskiden bu metot her koşulda None dönüyor, çağıran da sonucuna
+        bakmadan "applied" kaydediyordu. Başvuru hiç gönderilmemiş olsa bile
+        ilan kalıcı olarak "başvuruldu" işaretleniyor ve already_applied()
+        yüzünden bir daha asla denenmiyordu.
+        """
         page.wait_for_timeout(1500)
 
         for sel in [
@@ -422,19 +485,21 @@ class KariyerPlatform(BasePlatform):
                 pass
 
         for sel in [
-            "button:has-text('Başvur')",
+            "button:has-text('Başvuruyu Gönder')",
             "button:has-text('Onayla')",
             "button:has-text('Gönder')",
+            "button:has-text('Başvur')",
             "button[type='submit']",
         ]:
             try:
                 btn = page.query_selector(sel)
-                if btn and btn.is_visible():
+                if btn and btn.is_visible() and btn.is_enabled():
                     btn.click()
                     page.wait_for_timeout(2000)
-                    return
+                    return True
             except Exception:
                 pass
+        return False
 
     def _next_page(self, page: Page) -> bool:
         for sel in [
